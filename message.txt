@@ -1,0 +1,435 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+
+-- ===== State =====
+local Fly = {
+	active = false,
+	noclip = false,
+	debug = true,
+	speed = 50,
+	verticalSpeed = 40,
+	keys = {
+		[Enum.KeyCode.W] = false,
+		[Enum.KeyCode.S] = false,
+		[Enum.KeyCode.A] = false,
+		[Enum.KeyCode.D] = false,
+		[Enum.KeyCode.Q] = false,
+		[Enum.KeyCode.E] = false,
+	},
+	savedWalkSpeed = 16,
+	connections = {},
+}
+
+-- ===== UI Construction =====
+local function createUI()
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "FlyGui"
+	gui.ResetOnSpawn = false
+	gui.Parent = player:WaitForChild("PlayerGui")
+
+	-- Main frame (draggable)
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(0, 200, 0, 240)
+	frame.Position = UDim2.new(0.8, -220, 0.5, -120)
+	frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+	frame.BackgroundTransparency = 0.1
+	frame.BorderSizePixel = 0
+	frame.Parent = gui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = frame
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 1
+	stroke.Color = Color3.fromRGB(70, 70, 80)
+	stroke.Parent = frame
+
+	-- Title bar (drag handle)
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, 0, 0, 30)
+	title.Position = UDim2.new(0, 0, 0, 0)
+	title.BackgroundTransparency = 1
+	title.Text = "✈ FLY"
+	title.TextColor3 = Color3.fromRGB(220, 220, 255)
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 18
+	title.Parent = frame
+
+	-- Toggle fly button
+	local flyBtn = Instance.new("TextButton")
+	flyBtn.Size = UDim2.new(0, 120, 0, 36)
+	flyBtn.Position = UDim2.new(0.5, -60, 0, 40)
+	flyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+	flyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	flyBtn.Font = Enum.Font.GothamBold
+	flyBtn.TextSize = 16
+	flyBtn.Text = "FLY: OFF"
+	flyBtn.Parent = frame
+	corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = flyBtn
+
+	-- Noclip button
+	local noclipBtn = Instance.new("TextButton")
+	noclipBtn.Size = UDim2.new(0, 120, 0, 30)
+	noclipBtn.Position = UDim2.new(0.5, -60, 0, 82)
+	noclipBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+	noclipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	noclipBtn.Font = Enum.Font.GothamBold
+	noclipBtn.TextSize = 14
+	noclipBtn.Text = "NOCLIP: OFF"
+	noclipBtn.Parent = frame
+	corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = noclipBtn
+
+	-- Debug button
+	local debugBtn = Instance.new("TextButton")
+	debugBtn.Size = UDim2.new(0, 120, 0, 30)
+	debugBtn.Position = UDim2.new(0.5, -60, 0, 118)
+	debugBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+	debugBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	debugBtn.Font = Enum.Font.GothamBold
+	debugBtn.TextSize = 14
+	debugBtn.Text = "DEBUG: ON"
+	debugBtn.Parent = frame
+	corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = debugBtn
+
+	-- Speed input
+	local speedLabel = Instance.new("TextLabel")
+	speedLabel.Size = UDim2.new(1, -20, 0, 20)
+	speedLabel.Position = UDim2.new(0, 10, 0, 156)
+	speedLabel.BackgroundTransparency = 1
+	speedLabel.Text = "Speed: " .. Fly.speed
+	speedLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
+	speedLabel.Font = Enum.Font.Gotham
+	speedLabel.TextSize = 13
+	speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+	speedLabel.Parent = frame
+
+	local speedBox = Instance.new("TextBox")
+	speedBox.Size = UDim2.new(0, 80, 0, 28)
+	speedBox.Position = UDim2.new(0.5, -40, 0, 178)
+	speedBox.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+	speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+	speedBox.Font = Enum.Font.GothamBold
+	speedBox.TextSize = 16
+	speedBox.PlaceholderText = tostring(Fly.speed)
+	speedBox.ClearTextOnFocus = false
+	speedBox.Parent = frame
+	corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = speedBox
+
+	-- Debug info label
+	local debugLabel = Instance.new("TextLabel")
+	debugLabel.Size = UDim2.new(1, -20, 0, 60)
+	debugLabel.Position = UDim2.new(0, 10, 0, 212)
+	debugLabel.BackgroundTransparency = 1
+	debugLabel.Text = ""
+	debugLabel.TextColor3 = Color3.fromRGB(0, 255, 120)
+	debugLabel.Font = Enum.Font.Code
+	debugLabel.TextSize = 11
+	debugLabel.TextXAlignment = Enum.TextXAlignment.Left
+	debugLabel.TextYAlignment = Enum.TextYAlignment.Top
+	debugLabel.Parent = frame
+
+	-- Make frame draggable
+	local dragging, dragInput, dragStart, startPos
+
+	title.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+		end
+	end)
+
+	title.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	RunService.Heartbeat:Connect(function()
+		if dragging and dragInput then
+			local delta = dragInput.Position - dragStart
+			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+
+	-- Return UI elements for later updates
+	return {
+		frame = frame,
+		flyBtn = flyBtn,
+		noclipBtn = noclipBtn,
+		debugBtn = debugBtn,
+		speedBox = speedBox,
+		speedLabel = speedLabel,
+		debugLabel = debugLabel,
+	}
+end
+
+local ui = createUI()
+
+-- ===== Helper functions =====
+local function setCollision(character, enabled)
+	if not character then return end
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.CanCollide = enabled
+		end
+	end
+end
+
+local function updateUI()
+	ui.flyBtn.Text = Fly.active and "FLY: ON" or "FLY: OFF"
+	ui.flyBtn.BackgroundColor3 = Fly.active and Color3.fromRGB(40, 160, 70) or Color3.fromRGB(60, 60, 70)
+
+	ui.noclipBtn.Text = Fly.noclip and "NOCLIP: ON" or "NOCLIP: OFF"
+	ui.noclipBtn.BackgroundColor3 = Fly.noclip and Color3.fromRGB(40, 160, 70) or Color3.fromRGB(60, 60, 70)
+
+	ui.debugBtn.Text = Fly.debug and "DEBUG: ON" or "DEBUG: OFF"
+	ui.debugBtn.BackgroundColor3 = Fly.debug and Color3.fromRGB(40, 160, 70) or Color3.fromRGB(60, 60, 70)
+
+	ui.debugLabel.Visible = Fly.debug
+	ui.speedLabel.Text = "Speed: " .. Fly.speed
+end
+
+local function toggleFly(state)
+	state = (state == nil) and not Fly.active or state
+	if state == Fly.active then return end
+
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not char or not hum or not root then return end
+
+	-- Cleanup old parts / connections
+	for _, conn in ipairs(Fly.connections) do
+		conn:Disconnect()
+	end
+	Fly.connections = {}
+
+	local bodyVel = root:FindFirstChild("FlyForce")
+	local bodyGyro = root:FindFirstChild("FlyGyro")
+
+	if state then
+		-- Create physics objects
+		if not bodyVel then
+			bodyVel = Instance.new("BodyVelocity")
+			bodyVel.Name = "FlyForce"
+			bodyVel.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+			bodyVel.Velocity = Vector3.zero
+			bodyVel.P = 1250
+			bodyVel.Parent = root
+		end
+		if not bodyGyro then
+			bodyGyro = Instance.new("BodyGyro")
+			bodyGyro.Name = "FlyGyro"
+			bodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+			bodyGyro.P = 3000
+			bodyGyro.D = 100
+			bodyGyro.CFrame = root.CFrame
+			bodyGyro.Parent = root
+		end
+
+		-- Disable walk / gravity / animations
+		Fly.savedWalkSpeed = hum.WalkSpeed
+		hum.WalkSpeed = 0
+		hum.AutoRotate = false
+		setCollision(char, false)
+
+		-- Force swimming state
+		hum:ChangeState(Enum.HumanoidStateType.Swimming)
+		local stateConn = hum.StateChanged:Connect(function(_, newState)
+			if Fly.active and newState ~= Enum.HumanoidStateType.Swimming then
+				hum:ChangeState(Enum.HumanoidStateType.Swimming)
+			end
+		end)
+		table.insert(Fly.connections, stateConn)
+
+		-- Block animations
+		local animator = hum:FindFirstChildOfClass("Animator")
+		if animator then
+			for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+				track:Stop(0)
+			end
+			local animConn = animator.AnimationPlayed:Connect(function(track)
+				if Fly.active then track:Stop(0) end
+			end)
+			table.insert(Fly.connections, animConn)
+		end
+
+		Fly.active = true
+	else
+		-- Cleanup
+		if bodyVel then bodyVel:Destroy() end
+		if bodyGyro then bodyGyro:Destroy() end
+
+		hum.WalkSpeed = Fly.savedWalkSpeed
+		hum.AutoRotate = true
+		setCollision(char, true)
+		hum:ChangeState(Enum.HumanoidStateType.Freefall)
+
+		Fly.active = false
+	end
+
+	updateUI()
+end
+
+local function toggleNoclip(state)
+	state = (state == nil) and not Fly.noclip or state
+	if state == Fly.noclip then return end
+
+	Fly.noclip = state
+	-- Immediately disable collisions on current character if noclip is on, otherwise enable
+	local char = player.Character
+	if char then
+		if Fly.noclip then
+			setCollision(char, false)
+		elseif not Fly.active then
+			setCollision(char, true)
+		end
+	end
+	updateUI()
+end
+
+local function toggleDebug(state)
+	state = (state == nil) and not Fly.debug or state
+	Fly.debug = state
+	updateUI()
+end
+
+-- ===== Input Handling =====
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	local key = input.KeyCode
+	if Fly.keys[key] ~= nil then
+		Fly.keys[key] = true
+	elseif key == Enum.KeyCode.F9 then
+		toggleDebug()
+	elseif key == Enum.KeyCode.F10 then
+		toggleNoclip()
+	elseif key == Enum.KeyCode.F11 then
+		toggleFly()
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+	local key = input.KeyCode
+	if Fly.keys[key] ~= nil then
+		Fly.keys[key] = false
+	end
+end)
+
+-- ===== Speed Input =====
+ui.speedBox.FocusLost:Connect(function(enterPressed)
+	if enterPressed then
+		local val = tonumber(ui.speedBox.Text)
+		if val and val > 0 then
+			Fly.speed = val
+			ui.speedBox.PlaceholderText = tostring(val)
+			updateUI()
+		end
+		ui.speedBox.Text = ""
+	end
+end)
+
+-- ===== Button Callbacks =====
+ui.flyBtn.MouseButton1Click:Connect(toggleFly)
+ui.noclipBtn.MouseButton1Click:Connect(toggleNoclip)
+ui.debugBtn.MouseButton1Click:Connect(toggleDebug)
+
+-- ===== Character Respawn =====
+local function onCharacterAdded(newChar)
+	-- Reset state
+	Fly.active = false
+	Fly.noclip = false
+	-- Clean up old connections
+	for _, conn in ipairs(Fly.connections) do
+		conn:Disconnect()
+	end
+	Fly.connections = {}
+	-- Ensure collisions are on
+	setCollision(newChar, true)
+	updateUI()
+end
+
+player.CharacterAdded:Connect(onCharacterAdded)
+
+-- ===== Main Loop (Movement + Noclip enforcement) =====
+RunService.Heartbeat:Connect(function()
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local bodyVel = root and root:FindFirstChild("FlyForce")
+	local bodyGyro = root and root:FindFirstChild("FlyGyro")
+
+	-- Noclip enforcement (only when flying is off to avoid double work)
+	if Fly.noclip and not Fly.active and char then
+		for _, part in ipairs(char:GetDescendants()) do
+			if part:IsA("BasePart") and part.CanCollide then
+				part.CanCollide = false
+			end
+		end
+	end
+
+	if not Fly.active or not root or not bodyVel or not bodyGyro then
+		if Fly.debug then
+			ui.debugLabel.Text = "Standby"
+		end
+		return
+	end
+
+	-- Flight movement
+	local cam = workspace.CurrentCamera
+	local look = cam.CFrame.LookVector
+	local right = cam.CFrame.RightVector
+
+	local dir = Vector3.zero
+	if Fly.keys[Enum.KeyCode.W] then dir += look end
+	if Fly.keys[Enum.KeyCode.S] then dir -= look end
+	if Fly.keys[Enum.KeyCode.D] then dir += right end
+	if Fly.keys[Enum.KeyCode.A] then dir -= right end
+
+	if dir.Magnitude > 0 then dir = dir.Unit end
+
+	local velocity = dir * Fly.speed
+	if Fly.keys[Enum.KeyCode.E] then velocity += Vector3.new(0, Fly.verticalSpeed, 0) end
+	if Fly.keys[Enum.KeyCode.Q] then velocity -= Vector3.new(0, Fly.verticalSpeed, 0) end
+
+	bodyVel.Velocity = velocity
+	bodyGyro.CFrame = CFrame.new(root.Position, root.Position + look)
+
+	-- Debug display
+	if Fly.debug then
+		local keys = {}
+		for k, v in pairs(Fly.keys) do
+			if v then table.insert(keys, k.Name) end
+		end
+		local keyStr = #keys > 0 and table.concat(keys, ",") or "none"
+		ui.debugLabel.Text = string.format(
+			"Pos: %.0f, %.0f, %.0f\nVel: %.0f, %.0f, %.0f (%.0f)\nKeys: %s",
+			root.Position.X, root.Position.Y, root.Position.Z,
+			velocity.X, velocity.Y, velocity.Z,
+			velocity.Magnitude,
+			keyStr
+		)
+	end
+end)
+
+-- ===== Initial update =====
+updateUI()
